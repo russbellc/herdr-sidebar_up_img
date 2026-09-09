@@ -116,8 +116,11 @@ np="$(printf '%s' "$out" | sed -n 's/.*"pane_id":"\([^"]*\)".*/\1/p' | head -n1)
 
 if [ "$needs_swap" = "true" ]; then
   "$herdr_bin" pane swap --source-pane "$np" --target-pane "$target" >/dev/null 2>&1 || true
+run_cmd="herdr-sidebar"
+if ! command -v herdr-sidebar >/dev/null 2>&1; then
+  run_cmd="$bin"
 fi
-"$herdr_bin" pane run "$np" "herdr-sidebar"
+"$herdr_bin" pane run "$np" "$run_cmd"
 "$herdr_bin" pane rename "$np" Explorer >/dev/null 2>&1 || true
 
 # Keep the ensure lock through the TUI's first identity stamp. The swap and

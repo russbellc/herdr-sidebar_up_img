@@ -96,8 +96,11 @@ open_pane() {
       # follows the slot). Hand it back right away, the ensure hook's move.
       "$herdr_bin" pane focus --direction right --pane "$np" >/dev/null 2>&1 || true
     fi
+  run_cmd="herdr-sidebar"
+  if ! command -v herdr-sidebar >/dev/null 2>&1; then
+    run_cmd="$bin"
   fi
-  "$herdr_bin" pane run "$np" "herdr-sidebar"
+  "$herdr_bin" pane run "$np" "$run_cmd"
   "$herdr_bin" pane rename "$np" Explorer >/dev/null 2>&1 || true
   # Give the TUI time to stamp its identity token before hooks re-check.
   sleep 3

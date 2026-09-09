@@ -96,5 +96,6 @@ actual=$(sha256_of "$tmpdir/$asset") || fallback "no SHA-256 utility is availabl
 mkdir -p "$(dirname "$out")" || fallback "could not create the binary directory"
 chmod +x "$tmpdir/$asset"
 mv -f "$tmpdir/$asset" "$out" || fallback "could not install the verified binary"
+[ -d "$HOME/.local/bin" ] && ln -sf "$out" "$HOME/.local/bin/herdr-sidebar" 2>/dev/null || true
 echo "herdr-sidebar: installed verified prebuilt v$version ($triple)."
 exit 0
