@@ -93,9 +93,15 @@ A real tree, not a directory dump:
   file or a whole folder (additions, modifications *and* deletions), against the repo
   that actually owns the path. Staging a parent folder stops dead at a nested repository
   boundary, and staging something inside one stages it *there*.
+- **Paste image from clipboard** — press **`p`** or **`Ctrl+V`** on any folder in the tree
+  (or right-click / **`m`** → **Paste Image from Clipboard…**). The sidebar automatically
+  creates an `img/` directory (with an auto-generated `img/.gitignore` ignoring all contents
+  except `.gitignore`), saves the clipboard image as `clip_<timestamp>.png`, sweeps out clips
+  older than 7 days, and uses herdr IPC to inject `./<relative-path> ` directly into the prompt
+  of any neighboring agent pane.
 - **Double-click folders** to fold, hover highlights, mouse wheel, and a context menu on
   **`m`** or **Ctrl+right-click** — no mouse required, which is what makes it work on
-  mobile herdr clients: New File, New Folder, Open with Default App (files only — hands
+  mobile herdr clients: New File, New Folder, Paste Image from Clipboard…, Open with Default App (files only — hands
   the file to the OS-associated app, like a double click in the file manager), Stage
   Changes, Rename, Delete, Copy Path / Relative Path, Reveal in File Explorer.
 - Dotfiles toggle, live refresh, and a hide command when you want the columns back.
@@ -203,6 +209,7 @@ CaskaydiaCove). Also recommended: the
 | `r` | refresh | `A` | ✧ suggest message |
 | `.` | dotfiles | `S` | sync ↑↓ |
 | `m` | context menu | `o` | open diff |
+| `p` / `Ctrl+V` | paste image | | |
 | `b` | hide sidebar | `m` | context menu |
 | `s` | settings | `b` | hide sidebar |
 | `1` / `2` | switch view | `s` | settings |

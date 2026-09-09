@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 pub enum MenuAction {
     NewFile,
     NewFolder,
+    PasteImage,
     CopyPath,
     CopyRelativePath,
     Rename,
@@ -39,6 +40,7 @@ pub fn menu_entries(target: Option<bool>, in_repo: bool) -> Vec<MenuEntry> {
     let mut entries = vec![
         MenuEntry::Action(MenuAction::NewFile, "New File…"),
         MenuEntry::Action(MenuAction::NewFolder, "New Folder…"),
+        MenuEntry::Action(MenuAction::PasteImage, "Paste Image from Clipboard…"),
     ];
     if target == Some(false) {
         entries.extend([
@@ -309,6 +311,106 @@ pub fn pick_folder(start: &Path) -> Option<PathBuf> {
             .set_directory(start)
             .pick_folder()
     }
+}
+
+pub fn paste_image_from_clipboard(target_dir: &Path) -> Result<PathBuf, String> {
+    let mut dest_dir = target_dir.to_path_buf();
+    let dest_name = dest_dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    if dest_name != "img" && dest_name != "assets" {
+        dest_dir.push("img");
+    }
+    
+    if !dest_dir.exists() {
+        std::fs::create_dir_all(&dest_dir).map_err(|e| format!("Failed to create image directory: {}", e))?;
+    }
+    
+    if dest_dir.file_name().is_some_and(|n| n == "img") {
+        let gitignore = dest_dir.join(".gitignore");
+        if !gitignore.exists() {
+            let _ = std::fs::write(&gitignore, "*\n!.gitignore\n");
+        }
+    }
+    
+    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+    let target_file = dest_dir.join(format!("clip_{timestamp}.png"));
+    
+    #[cfg(windows)]
+    {
+        let ps_cmd = format!("Add-Type -AssemblyName System.Windows.Forms; $img = [System.Windows.Forms.Clipboard]::GetImage(); if (-not $img) {{ exit 2 }}; $img.Save('{}', [System.Drawing.Imaging.ImageFormat]::Png)", target_file.display());
+        let status = std::process::Command::new("powershell")
+            .args(&["-NoProfile", "-NonInteractive", "-Command", &ps_cmd])
+            .status()
+            .map_err(|e| format!("powershell failed: {}", e))?;
+        if !status.success() {
+            return Err("no image in clipboard".to_string());
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let mut success = false;
+        if std::env::var("WAYLAND_DISPLAY").is_ok() && std::process::Command::new("wl-paste").arg("--version").output().is_ok() {
+            if let Ok(file) = std::fs::File::create(&target_file) {
+                if let Ok(mut child) = std::process::Command::new("wl-paste").args(&["--type", "image/png"]).stdout(file).spawn() {
+                    if child.wait().map(|s| s.success()).unwrap_or(false) {
+                        success = true;
+                    }
+                }
+            }
+        }
+        
+        #[cfg(target_os = "macos")]
+        if !success {
+            if std::process::Command::new("pngpaste").arg("--version").output().is_ok() {
+                if std::process::Command::new("pngpaste").arg(&target_file).status().map(|s| s.success()).unwrap_or(false) {
+                    success = true;
+                }
+            } else {
+                let script = format!("set theFile to (open for access POSIX file \"{}\" with write permission)\ntry\nwrite (the clipboard as «class PNGf») to theFile\nend try\nclose access theFile", target_file.display());
+                if std::process::Command::new("osascript").args(&["-e", &script]).status().map(|s| s.success()).unwrap_or(false) {
+                    success = true;
+                }
+            }
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        if !success && std::env::var("DISPLAY").is_ok() && std::process::Command::new("xclip").arg("-version").output().is_ok() {
+            if let Ok(file) = std::fs::File::create(&target_file) {
+                if let Ok(mut child) = std::process::Command::new("xclip").args(&["-selection", "clipboard", "-t", "image/png", "-o"]).stdout(file).spawn() {
+                    if child.wait().map(|s| s.success()).unwrap_or(false) {
+                        success = true;
+                    }
+                }
+            }
+        }
+        
+        if !success {
+            let _ = std::fs::remove_file(&target_file);
+            return Err("no image in clipboard".to_string());
+        }
+    }
+    
+    if let Ok(entries) = std::fs::read_dir(&dest_dir) {
+        let seven_days = 7 * 24 * 3600;
+        let now = std::time::SystemTime::now();
+        for entry in entries.flatten() {
+            if let Ok(meta) = entry.metadata() {
+                if meta.is_file() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if name.starts_with("clip_") && name.ends_with(".png") {
+                        if let Ok(modified) = meta.modified() {
+                            if let Ok(duration) = now.duration_since(modified) {
+                                if duration.as_secs() > seven_days {
+                                    let _ = std::fs::remove_file(entry.path());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(target_file)
 }
 
 #[cfg(test)]

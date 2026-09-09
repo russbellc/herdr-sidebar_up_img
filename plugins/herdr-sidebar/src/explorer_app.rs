@@ -736,6 +736,14 @@ impl App {
             self.open_quick_open();
             return None;
         }
+        if key.code == KeyCode::Char('v')
+            && key.modifiers.contains(KeyModifiers::CONTROL)
+            && self.overlay.is_none()
+        {
+            let dir = create_target_dir(self.selected_row(), self.tree.root_path());
+            self.paste_image_action(dir);
+            return None;
+        }
         self.notice = None;
         if self.overlay.is_some() {
             self.overlay_key(key);
@@ -766,6 +774,10 @@ impl App {
             KeyCode::Char('b') => self.hide(),
             KeyCode::Char('c') => self.change_folder_dialog(),
             KeyCode::Char('m') => self.open_menu_for_selection(),
+            KeyCode::Char('p') => {
+                let dir = create_target_dir(self.selected_row(), self.tree.root_path());
+                self.paste_image_action(dir);
+            }
             KeyCode::Char('s') => self.open_settings(),
             KeyCode::Char('1') => return self.switch_to(View::Explorer),
             KeyCode::Char('2') => return self.switch_to(View::SourceControl),
@@ -1596,6 +1608,10 @@ impl App {
             None => self.tree.root_path(),
         };
         match action {
+            MenuAction::PasteImage => {
+                let dir = create_dir.clone();
+                self.paste_image_action(dir);
+            }
             MenuAction::NewFile => {
                 self.overlay = Some(Overlay::Prompt {
                     title: "New file".into(),
@@ -1787,6 +1803,52 @@ impl App {
                 }
             }
             Err(err) => self.notice = Some(format!("failed: {err}")),
+        }
+    }
+
+    fn paste_image_action(&mut self, dir: PathBuf) {
+        match actions::paste_image_from_clipboard(&dir) {
+            Ok(saved_path) => {
+                let rel_path = saved_path.strip_prefix(self.tree.root_path()).unwrap_or(&saved_path);
+                self.notice = Some(format!("pasted: {}", rel_path.display()));
+                
+                if let Ok(json) = ipc::call_text("pane.list", serde_json::json!({})) {
+                    if let Some(ctl) = &self.pane_ctl {
+                        let json_clean = json.trim_start_matches('\u{feff}');
+                        let json_val: serde_json::Value = serde_json::from_str(json_clean).unwrap_or_default();
+                        let panes_opt = json_val
+                            .get("result")
+                            .and_then(|r| r.get("panes"))
+                            .or_else(|| json_val.get("panes"))
+                            .and_then(|p| p.as_array());
+                        if let Some(panes) = panes_opt {
+                            let tab_id = herdr_sidebar::launch::tab_of(&json, &ctl.pane_id);
+                            for p in panes {
+                                if p.get("tab_id").and_then(|id| id.as_str()) == Some(&tab_id) {
+                                    if let Some(id) = p.get("pane_id").and_then(|id| id.as_str()) {
+                                        if id != ctl.pane_id {
+                                            let label = p.get("label").and_then(|l| l.as_str()).unwrap_or("");
+                                            if label != sidebar::SIDEBAR_LABEL && label != herdr_sidebar::launch::PANE_LABEL && label != "Source Control" {
+                                                let text = format!("./{} ", rel_path.display());
+                                                let _ = ipc::call_text("pane.send_text", serde_json::json!({
+                                                    "pane_id": id,
+                                                    "text": text
+                                                }));
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                self.refresh_tree();
+            }
+            Err(err) => {
+                self.notice = Some(format!("paste image failed: {}", err));
+            }
         }
     }
 
